@@ -1,0 +1,65 @@
+package dto
+
+import (
+	"time"
+
+	"github.com/xiaozhao/xiaozhao/internal/domain"
+)
+
+// FromUser converts a domain user into the API DTO. We deliberately strip
+// password-related fields at this boundary so an accidental leak via handler
+// refactoring cannot happen later.
+func FromUser(u *domain.User) UserResponse {
+	return UserResponse{
+		ID:        u.ID,
+		Email:     u.Email,
+		Name:      u.Name,
+		Status:    string(u.Status),
+		CreatedAt: u.CreatedAt,
+	}
+}
+
+// FromOrg converts a domain org into the API DTO.
+func FromOrg(o *domain.Organization) OrgResponse {
+	return OrgResponse{
+		ID:        o.ID,
+		Name:      o.Name,
+		Plan:      o.Plan,
+		Status:    string(o.Status),
+		CreatedBy: o.CreatedBy,
+		CreatedAt: o.CreatedAt,
+	}
+}
+
+// FromMember converts a domain membership into the API DTO.
+func FromMember(m *domain.OrgMember) MemberResponse {
+	return MemberResponse{
+		OrgID:    m.OrgID,
+		UserID:   m.UserID,
+		Role:     string(m.Role),
+		Status:   string(m.Status),
+		JoinedAt: m.JoinedAt,
+	}
+}
+
+// FromProject converts a domain project into the API DTO.
+func FromProject(p *domain.Project) ProjectResponse {
+	return ProjectResponse{
+		ID:         p.ID,
+		OrgID:      p.OrgID,
+		Name:       p.Name,
+		Settings:   p.Settings,
+		Visibility: string(p.Visibility),
+		CreatedBy:  p.CreatedBy,
+		CreatedAt:  p.CreatedAt,
+	}
+}
+
+// BuildTokenResponse wraps an access token pair.
+func BuildTokenResponse(accessToken string, expiresAt time.Time) TokenResponse {
+	return TokenResponse{
+		AccessToken: accessToken,
+		TokenType:   "Bearer",
+		ExpiresAt:   expiresAt,
+	}
+}

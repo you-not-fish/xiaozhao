@@ -1,0 +1,37 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: xiaozhao-postgres
+    environment:
+      POSTGRES_USER: xiaozhao
+      POSTGRES_PASSWORD: xiaozhao
+      POSTGRES_DB: xiaozhao
+      TZ: Asia/Shanghai
+    ports:
+      - "5432:5432"
+    volumes:
+      - xiaozhao-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xiaozhao -d xiaozhao"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: xiaozhao-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - xiaozhao-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  xiaozhao-pg-data:
+  xiaozhao-redis-data:

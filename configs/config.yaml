@@ -1,0 +1,36 @@
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout_seconds: 30
+  write_timeout_seconds: 60
+  shutdown_timeout_seconds: 15
+
+log:
+  level: "info"          # debug / info / warn / error
+  encoding: "console"    # console / json
+  caller: true
+
+postgres:
+  dsn: "host=127.0.0.1 port=5432 user=xiaozhao password=xiaozhao dbname=xiaozhao sslmode=disable TimeZone=Asia/Shanghai"
+  max_open_conns: 50
+  max_idle_conns: 10
+  conn_max_lifetime_seconds: 1800
+  auto_migrate: true
+
+redis:
+  addr: "127.0.0.1:6379"
+  password: ""
+  db: 0
+  pool_size: 20
+
+auth:
+  jwt_secret: "change-me-in-production-32-bytes-min"
+  jwt_issuer: "xiaozhao"
+  access_token_ttl_seconds: 86400    # 24h
+  refresh_token_ttl_seconds: 2592000 # 30d
+  password_min_length: 8
+
+ratelimit:
+  enabled: true
+  per_user_per_minute: 120
+  per_ip_per_minute: 300

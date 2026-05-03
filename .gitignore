@@ -1,0 +1,35 @@
+# Binaries
+/bin/
+/dist/
+*.exe
+*.dll
+*.so
+*.dylib
+docs/**
+/
+
+# Test & coverage
+*.test
+*.out
+coverage.*
+
+# Go build cache
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+/logs/
+
+# Local overrides
+configs/config.local.yaml
+.env
+.env.local

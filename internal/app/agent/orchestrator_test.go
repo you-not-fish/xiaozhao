@@ -14,6 +14,7 @@ import (
 	"github.com/xiaozhao/xiaozhao/internal/app/tool"
 	"github.com/xiaozhao/xiaozhao/internal/domain"
 	"github.com/xiaozhao/xiaozhao/internal/infra/model"
+	"github.com/xiaozhao/xiaozhao/internal/infra/websearch"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/config"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/id"
 )
@@ -102,6 +103,34 @@ func TestOrchestratorOverridesForgedKnowledgeSearchScope(t *testing.T) {
 	allowed, ok := got["allowed_knowledge_base_ids"].([]any)
 	if !ok || len(allowed) != 1 || allowed[0] != "kb_1" {
 		t.Fatalf("allowed KBs = %#v", got["allowed_knowledge_base_ids"])
+	}
+}
+
+func TestOrchestratorEmitsCitationFromWebSearch(t *testing.T) {
+	fx := newAgentFixture(t, model.NewMockProvider(
+		model.MockScript{
+			ToolCalls: []model.ToolCall{{
+				ID:        "call_web",
+				Name:      "web_search",
+				Arguments: json.RawMessage(`{"query":"最新 AI 新闻","count":1}`),
+			}},
+		},
+		model.MockScript{Text: "done", Finish: model.FinishStop},
+	))
+	if err := fx.tools.Register(tool.NewWebSearch(websearch.NewMockProvider(5, "noLimit"), 5, "noLimit", 15)); err != nil {
+		t.Fatalf("register web_search: %v", err)
+	}
+	res, err := fx.orch.Run(context.Background(), baseRunRequest())
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	events, finalErr := drainEvents(res.Events)
+	if finalErr != nil {
+		t.Fatalf("final error = %v", finalErr)
+	}
+	assertEventTypes(t, events, domain.EventCitationAdded, domain.EventToolCallCompleted, domain.EventResponseCompleted)
+	if !hasMessageItemType(t, fx.messages, res.MessageID, domain.ItemTypeCitation) {
+		t.Fatal("citation message item not persisted")
 	}
 }
 
@@ -262,6 +291,20 @@ func findEvent(events []domain.ResponseEvent, typ domain.EventType) *domain.Resp
 		}
 	}
 	return nil
+}
+
+func hasMessageItemType(t *testing.T, repo *fakeMessageRepo, messageID string, typ domain.MessageItemType) bool {
+	t.Helper()
+	items, err := repo.ListItemsByMessage(context.Background(), messageID)
+	if err != nil {
+		t.Fatalf("ListItemsByMessage() error = %v", err)
+	}
+	for _, item := range items {
+		if item.Type == typ {
+			return true
+		}
+	}
+	return false
 }
 
 type bigResultTool struct{}

@@ -35,6 +35,8 @@ import (
 	"github.com/xiaozhao/xiaozhao/internal/infra/parser"
 	"github.com/xiaozhao/xiaozhao/internal/infra/repository"
 	"github.com/xiaozhao/xiaozhao/internal/infra/storage"
+	"github.com/xiaozhao/xiaozhao/internal/infra/webfetch"
+	"github.com/xiaozhao/xiaozhao/internal/infra/websearch"
 	"github.com/xiaozhao/xiaozhao/internal/observability"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/config"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/jwt"
@@ -122,12 +124,27 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	if err != nil {
 		return fmt.Errorf("init embedding provider: %w", err)
 	}
+	webSearchProvider, err := websearch.NewProvider(cfg.WebSearch)
+	if err != nil {
+		return fmt.Errorf("init web search provider: %w", err)
+	}
+	webFetcher := webfetch.New(webfetch.Config{
+		Timeout:      time.Duration(cfg.WebFetch.TimeoutSeconds) * time.Second,
+		MaxBodyBytes: cfg.WebFetch.MaxBodyKB * 1024,
+		MaxRedirects: cfg.WebFetch.MaxRedirects,
+	})
 	toolRegistry := toolapp.NewRegistry()
 	if err := toolRegistry.Register(toolapp.NewCurrentTime()); err != nil {
 		return fmt.Errorf("register current_time: %w", err)
 	}
 	if err := toolRegistry.Register(toolapp.NewCalculator()); err != nil {
 		return fmt.Errorf("register calculator: %w", err)
+	}
+	if err := toolRegistry.Register(toolapp.NewWebSearch(webSearchProvider, cfg.WebSearch.MaxResults, cfg.WebSearch.DefaultFreshness, cfg.WebSearch.TimeoutSeconds)); err != nil {
+		return fmt.Errorf("register web_search: %w", err)
+	}
+	if err := toolRegistry.Register(toolapp.NewWebFetch(webFetcher, cfg.WebFetch.TimeoutSeconds)); err != nil {
+		return fmt.Errorf("register web_fetch: %w", err)
 	}
 	objectStore, err := storage.NewMinIOStore(ctx, storage.MinIOConfig{
 		Endpoint:         cfg.Storage.Endpoint,

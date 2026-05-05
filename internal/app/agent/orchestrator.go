@@ -10,6 +10,7 @@ import (
 	"io"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/xiaozhao/xiaozhao/internal/app/tool"
 	"github.com/xiaozhao/xiaozhao/internal/domain"
@@ -504,6 +505,28 @@ func (o *DefaultOrchestrator) executeTool(
 	if err := o.toolCalls.SaveResult(context.Background(), tr); err != nil {
 		return "", errcode.Wrap(err, errcode.CodeInternal, "save tool result")
 	}
+	citations := extractCitations(result)
+	for _, citation := range citations {
+		*itemSeq = *itemSeq + 1
+		if err := o.messages.AppendItem(context.Background(), &domain.MessageItem{
+			ID:        id.New(id.PrefixMessage),
+			MessageID: messageID,
+			Seq:       *itemSeq,
+			Type:      domain.ItemTypeCitation,
+			Content:   citation,
+			CreatedAt: time.Now(),
+		}); err != nil {
+			return "", errcode.Wrap(err, errcode.CodeInternal, "append citation item")
+		}
+		// 引用作为独立事件发出，前端可以先显示工具过程，再逐条挂载可点击来源。
+		if err := emit(domain.EventCitationAdded, map[string]any{
+			"tool_call_id": call.ID,
+			"tool_name":    call.Name,
+			"citation":     citation,
+		}); err != nil {
+			return "", err
+		}
+	}
 	*itemSeq = *itemSeq + 1
 	_ = o.messages.AppendItem(context.Background(), &domain.MessageItem{
 		ID:        id.New(id.PrefixMessage),
@@ -532,6 +555,48 @@ func (o *DefaultOrchestrator) executeTool(
 	}
 	o.recordUsage(req, responseID, "tool", tc.ID, 1, "call")
 	return payload, nil
+}
+
+func extractCitations(result any) []map[string]any {
+	raw, err := json.Marshal(result)
+	if err != nil {
+		return nil
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		return nil
+	}
+	out := make([]map[string]any, 0, 4)
+	if c, ok := obj["citation"].(map[string]any); ok {
+		out = append(out, c)
+	}
+	if items, ok := obj["citations"].([]any); ok {
+		for _, item := range items {
+			c, ok := item.(map[string]any)
+			if !ok {
+				continue
+			}
+			out = append(out, c)
+			if len(out) >= 10 {
+				break
+			}
+		}
+	}
+	return dedupeCitations(out)
+}
+
+func dedupeCitations(items []map[string]any) []map[string]any {
+	out := make([]map[string]any, 0, len(items))
+	seen := map[string]bool{}
+	for _, c := range items {
+		key := fmt.Sprintf("%v|%v", c["source_type"], c["url"])
+		if key == "|" || seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, c)
+	}
+	return out
 }
 
 func (o *DefaultOrchestrator) buildModelMessages(ctx context.Context, conversationID string) ([]model.Message, error) {
@@ -623,7 +688,12 @@ func (o *DefaultOrchestrator) marshalToolResult(result any) (string, bool, int, 
 		return string(raw), false, original, nil
 	}
 	// P0 只截断不摘要：摘要会产生额外模型调用和成本，留到 P1.5。
-	return string(raw[:limit]), true, original, nil
+	// 按字节截断可能切在 UTF-8 多字节序列中间，回退到最近的有效 UTF-8 边界。
+	end := limit
+	for end > 0 && !utf8.Valid(raw[:end]) {
+		end--
+	}
+	return string(raw[:end]), true, original, nil
 }
 
 func (o *DefaultOrchestrator) recordModelInvocation(req RunRequest, responseID, modelName string, inTok, outTok, latency int, status string, code errcode.Code) {
@@ -721,6 +791,9 @@ func summarizeResult(s string) string {
 }
 
 func toolErrCode(err error) errcode.Code {
+	if e, ok := errcode.As(err); ok {
+		return e.Code
+	}
 	if strings.Contains(err.Error(), "timed out") {
 		return errcode.CodeToolTimeout
 	}

@@ -22,6 +22,8 @@ type Config struct {
 	Embedding EmbeddingConfig `mapstructure:"embedding"`
 	Agent     AgentConfig     `mapstructure:"agent"`
 	Storage   StorageConfig   `mapstructure:"storage"`
+	WebSearch WebSearchConfig `mapstructure:"web_search"`
+	WebFetch  WebFetchConfig  `mapstructure:"web_fetch"`
 }
 
 type ServerConfig struct {
@@ -156,6 +158,26 @@ func (s StorageConfig) MaxUploadBytes() int64 {
 	return s.MaxUploadMB * 1024 * 1024
 }
 
+type WebSearchConfig struct {
+	Provider         string            `mapstructure:"provider"`
+	MaxResults       int               `mapstructure:"max_results"`
+	DefaultFreshness string            `mapstructure:"default_freshness"`
+	TimeoutSeconds   int               `mapstructure:"timeout_seconds"` // 工具调用整体超时（model/Orchestrator 层）
+	Bocha            BochaSearchConfig `mapstructure:"bocha"`
+}
+
+type BochaSearchConfig struct {
+	BaseURL        string `mapstructure:"base_url"`
+	APIKey         string `mapstructure:"api_key"`
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
+}
+
+type WebFetchConfig struct {
+	TimeoutSeconds int   `mapstructure:"timeout_seconds"`
+	MaxBodyKB      int64 `mapstructure:"max_body_kb"`
+	MaxRedirects   int   `mapstructure:"max_redirects"`
+}
+
 // Load reads the configuration from the given path. Environment variables
 // with prefix XIAOZHAO_ override values from the file.
 func Load(path string) (*Config, error) {
@@ -277,6 +299,50 @@ func (c *Config) validate() error {
 	}
 	if c.Storage.MaxUploadMB <= 0 {
 		c.Storage.MaxUploadMB = 50
+	}
+	if c.WebSearch.Provider == "" {
+		c.WebSearch.Provider = "mock"
+	}
+	if c.WebSearch.MaxResults <= 0 {
+		c.WebSearch.MaxResults = 5
+	}
+	if c.WebSearch.MaxResults > 10 {
+		c.WebSearch.MaxResults = 10
+	}
+	if c.WebSearch.DefaultFreshness == "" {
+		c.WebSearch.DefaultFreshness = "noLimit"
+	}
+	switch c.WebSearch.DefaultFreshness {
+	case "noLimit", "oneDay", "oneWeek", "oneMonth", "oneYear":
+	default:
+		return fmt.Errorf("web_search.default_freshness must be one of: noLimit, oneDay, oneWeek, oneMonth, oneYear (got %q)", c.WebSearch.DefaultFreshness)
+	}
+	if c.WebSearch.TimeoutSeconds <= 0 {
+		c.WebSearch.TimeoutSeconds = 15
+	}
+	switch c.WebSearch.Provider {
+	case "mock":
+	case "bocha":
+		if c.WebSearch.Bocha.BaseURL == "" {
+			c.WebSearch.Bocha.BaseURL = "https://api.bochaai.com/v1/web-search"
+		}
+		if c.WebSearch.Bocha.APIKey == "" {
+			return fmt.Errorf("web_search.bocha.api_key must not be empty when provider=bocha")
+		}
+		if c.WebSearch.Bocha.TimeoutSeconds <= 0 {
+			c.WebSearch.Bocha.TimeoutSeconds = 15
+		}
+	default:
+		return fmt.Errorf("web_search.provider must be one of: mock, bocha (got %q)", c.WebSearch.Provider)
+	}
+	if c.WebFetch.TimeoutSeconds <= 0 {
+		c.WebFetch.TimeoutSeconds = 15
+	}
+	if c.WebFetch.MaxBodyKB <= 0 {
+		c.WebFetch.MaxBodyKB = 1024
+	}
+	if c.WebFetch.MaxRedirects <= 0 {
+		c.WebFetch.MaxRedirects = 3
 	}
 	return nil
 }

@@ -77,3 +77,20 @@ storage:
   use_ssl: false
   auto_create_bucket: true
   max_upload_mb: 50
+
+# 联网搜索工具。默认 mock，真实中文搜索可切到 bocha，并通过环境变量注入 API Key。
+web_search:
+  provider: "mock"                 # mock | bocha
+  max_results: 5
+  default_freshness: "noLimit"     # noLimit | oneDay | oneWeek | oneMonth | oneYear
+  timeout_seconds: 15              # 工具调用整体超时
+  bocha:
+    base_url: "https://api.bochaai.com/v1/web-search"
+    api_key: ""                    # 推荐通过 XIAOZHAO_WEB_SEARCH_BOCHA_API_KEY 注入
+    timeout_seconds: 15
+
+# 网页抓取工具。独立于搜索 provider，用于 web_fetch 工具打开任意 URL。
+web_fetch:
+  timeout_seconds: 15
+  max_body_kb: 1024
+  max_redirects: 3

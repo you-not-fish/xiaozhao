@@ -78,6 +78,8 @@ make run           # 默认读取 configs/config.yaml
 | GET  /v1/projects/{projectID}               | 获取项目                | Bearer    | —     |
 | PATCH /v1/projects/{projectID}              | 更新（admin+）          | Bearer    | —     |
 | DELETE /v1/projects/{projectID}             | 删除（admin+）          | Bearer    | —     |
+| POST /v1/responses                          | 创建 Agent 响应（SSE） | Bearer    | X-Organization-Id 或 JWT 内 |
+| GET  /v1/responses/{responseID}/events      | 回放响应事件            | Bearer    | 同上  |
 
 统一响应 Envelope：
 
@@ -119,12 +121,22 @@ go test ./... -race
 - `pkg/errcode` HTTP 映射与 `errors.Is` 穿透
 - `pkg/jwt` 签发/校验 round-trip、错密钥、过期
 - `pkg/password` bcrypt round-trip、空输入拒绝
+- `app/agent` P0 状态机：无工具、工具调用、工具失败、工具结果截断、模型失败
+- `api/v1` responses handler：鉴权、租户上下文、SSE header、事件回放租户校验
 
 ## 下一步建议
 
-按 MVP 文档 §9.1 P0 的剩余交付顺序推进：
+P0 核心闭环已打通：
 
 1. `POST /v1/responses` SSE demo + `response_events` 表（事件先持久化再推）
-2. Model Gateway（OpenAI-compatible，内置 `current_time`、`calculator` 工具）
+2. Model Gateway（mock / OpenAI-compatible）与内置 `current_time`、`calculator` 工具
 3. 基础 trace/span 记录（`trace_spans` 表 + `internal/observability`）
-4. 审计日志（`audit_logs`） + 用量（`usage_records`） 的仓储
+4. 模型调用、工具调用、审计日志、用量流水仓储
+
+后续按 P1 推进：
+
+1. 文件上传与对象存储
+2. 文档解析、chunk、embedding、pgvector 检索
+3. `knowledge_search` 工具
+4. `web_search` 工具
+5. 管理后台 API：用量、审计、tool calls、model invocations、trace 查询

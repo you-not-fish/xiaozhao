@@ -4,7 +4,10 @@
 // persistence model does not leak into responses).
 package dto
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // --- Auth ---
 
@@ -107,4 +110,40 @@ type ProjectResponse struct {
 
 type ProjectListResponse struct {
 	Items []ProjectResponse `json:"items"`
+}
+
+// --- Agent Responses ---
+
+type ResponseToolRequest struct {
+	Type             string   `json:"type" validate:"required"`
+	KnowledgeBaseIDs []string `json:"knowledge_base_ids,omitempty"`
+}
+
+type CreateResponseRequest struct {
+	ProjectID      string                `json:"project_id" validate:"required"`
+	ConversationID string                `json:"conversation_id,omitempty"`
+	Model          string                `json:"model,omitempty"`
+	Input          string                `json:"input" validate:"required"`
+	Tools          []ResponseToolRequest `json:"tools,omitempty"`
+	Stream         *bool                 `json:"stream,omitempty"`
+}
+
+type ResponseCreatedResponse struct {
+	ResponseID     string `json:"response_id"`
+	ConversationID string `json:"conversation_id"`
+	MessageID      string `json:"message_id"`
+}
+
+type ResponseEventResponse struct {
+	ID             string          `json:"id"`
+	ResponseID     string          `json:"response_id"`
+	ConversationID string          `json:"conversation_id"`
+	Seq            int             `json:"seq"`
+	Type           string          `json:"type"`
+	Data           json.RawMessage `json:"data"`
+	CreatedAt      time.Time       `json:"created_at"`
+}
+
+type ResponseEventListResponse struct {
+	Items []ResponseEventResponse `json:"items"`
 }

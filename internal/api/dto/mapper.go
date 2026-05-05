@@ -55,6 +55,23 @@ func FromProject(p *domain.Project) ProjectResponse {
 	}
 }
 
+// FromResponseEvent converts a persisted event into the public replay DTO.
+func FromResponseEvent(e domain.ResponseEvent) ResponseEventResponse {
+	data := e.Data
+	if len(data) == 0 {
+		data = []byte(`{}`)
+	}
+	return ResponseEventResponse{
+		ID:             e.ID,
+		ResponseID:     e.ResponseID,
+		ConversationID: e.ConversationID,
+		Seq:            e.Seq,
+		Type:           string(e.Type),
+		Data:           data,
+		CreatedAt:      e.CreatedAt,
+	}
+}
+
 // BuildTokenResponse wraps an access token pair.
 func BuildTokenResponse(accessToken string, expiresAt time.Time) TokenResponse {
 	return TokenResponse{

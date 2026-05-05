@@ -18,6 +18,8 @@ type Config struct {
 	Redis     RedisConfig     `mapstructure:"redis"`
 	Auth      AuthConfig      `mapstructure:"auth"`
 	RateLimit RateLimitConfig `mapstructure:"ratelimit"`
+	Model     ModelConfig     `mapstructure:"model"`
+	Agent     AgentConfig     `mapstructure:"agent"`
 }
 
 type ServerConfig struct {
@@ -91,6 +93,36 @@ type RateLimitConfig struct {
 	PerIPPerMinute   int  `mapstructure:"per_ip_per_minute"`
 }
 
+// ModelConfig 配置模型网关。MVP 支持两种 Provider：
+//   - mock：本地脚本化 Provider，开发/演示默认值，无需任何外部依赖；
+//   - openai：OpenAI-compatible，适用于 OpenAI 以及任何对齐 Chat Completions 协议的国内外供应商。
+type ModelConfig struct {
+	// Provider 选择哪种 Provider：mock / openai。留空默认 mock。
+	Provider string `mapstructure:"provider"`
+	// DefaultModel 是 OpenAI-compatible 调用时传给上游的 model 字段；
+	// mock 模式下只作为审计字段使用。
+	DefaultModel string `mapstructure:"default_model"`
+	// OpenAI 具体 Provider 配置；Provider=openai 时必填。
+	OpenAI OpenAIProviderConfig `mapstructure:"openai"`
+}
+
+// OpenAIProviderConfig 覆盖 OpenAI-compatible Provider 所需参数。
+// APIKey 建议通过环境变量 XIAOZHAO_MODEL_OPENAI_APIKEY 注入，避免写入配置文件。
+type OpenAIProviderConfig struct {
+	Name           string `mapstructure:"name"`            // 审计用标识，缺省 "openai"
+	BaseURL        string `mapstructure:"base_url"`        // 例如 https://api.openai.com/v1
+	APIKey         string `mapstructure:"api_key"`         // Bearer token
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"` // 单次调用超时
+}
+
+// AgentConfig 控制 Agent Orchestrator 的运行参数。
+type AgentConfig struct {
+	MaxToolIterations int `mapstructure:"max_tool_iterations"` // 工具循环上限，默认 5
+	ModelTimeoutSec   int `mapstructure:"model_timeout_seconds"`
+	ToolTimeoutSec    int `mapstructure:"tool_timeout_seconds"`
+	MaxToolResultKB   int `mapstructure:"max_tool_result_kb"` // 工具结果截断阈值
+}
+
 // Load reads the configuration from the given path. Environment variables
 // with prefix XIAOZHAO_ override values from the file.
 func Load(path string) (*Config, error) {
@@ -131,6 +163,41 @@ func (c *Config) validate() error {
 	}
 	if c.Auth.PasswordMinLength < 6 {
 		c.Auth.PasswordMinLength = 6
+	}
+	// Model 默认走 mock，使服务在未配置真实供应商时也能启动。
+	if c.Model.Provider == "" {
+		c.Model.Provider = "mock"
+	}
+	switch c.Model.Provider {
+	case "mock":
+		// 允许 default_model 为空，mock 会直接忽略它。
+	case "openai":
+		if c.Model.OpenAI.BaseURL == "" {
+			return fmt.Errorf("model.openai.base_url must not be empty when provider=openai")
+		}
+		if c.Model.OpenAI.APIKey == "" {
+			return fmt.Errorf("model.openai.api_key must not be empty when provider=openai")
+		}
+		if c.Model.OpenAI.Name == "" {
+			c.Model.OpenAI.Name = "openai"
+		}
+		if c.Model.OpenAI.TimeoutSeconds <= 0 {
+			c.Model.OpenAI.TimeoutSeconds = 60
+		}
+	default:
+		return fmt.Errorf("model.provider must be one of: mock, openai (got %q)", c.Model.Provider)
+	}
+	if c.Agent.MaxToolIterations <= 0 {
+		c.Agent.MaxToolIterations = 5
+	}
+	if c.Agent.ModelTimeoutSec <= 0 {
+		c.Agent.ModelTimeoutSec = 60
+	}
+	if c.Agent.ToolTimeoutSec <= 0 {
+		c.Agent.ToolTimeoutSec = 15
+	}
+	if c.Agent.MaxToolResultKB <= 0 {
+		c.Agent.MaxToolResultKB = 64
 	}
 	return nil
 }

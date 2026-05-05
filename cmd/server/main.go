@@ -19,14 +19,18 @@ import (
 
 	"github.com/xiaozhao/xiaozhao/internal/api/router"
 	v1 "github.com/xiaozhao/xiaozhao/internal/api/v1"
+	agentapp "github.com/xiaozhao/xiaozhao/internal/app/agent"
 	authapp "github.com/xiaozhao/xiaozhao/internal/app/auth"
 	orgapp "github.com/xiaozhao/xiaozhao/internal/app/org"
 	projectapp "github.com/xiaozhao/xiaozhao/internal/app/project"
 	"github.com/xiaozhao/xiaozhao/internal/app/rbac"
+	toolapp "github.com/xiaozhao/xiaozhao/internal/app/tool"
 	"github.com/xiaozhao/xiaozhao/internal/infra/cache"
 	"github.com/xiaozhao/xiaozhao/internal/infra/database"
 	"github.com/xiaozhao/xiaozhao/internal/infra/migration"
+	"github.com/xiaozhao/xiaozhao/internal/infra/model"
 	"github.com/xiaozhao/xiaozhao/internal/infra/repository"
+	"github.com/xiaozhao/xiaozhao/internal/observability"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/config"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/jwt"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/logger"
@@ -88,32 +92,69 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	orgRepo := repository.NewOrgRepo(db)
 	memberRepo := repository.NewOrgMemberRepo(db)
 	projectRepo := repository.NewProjectRepo(db)
+	conversationRepo := repository.NewConversationRepo(db)
+	messageRepo := repository.NewMessageRepo(db)
+	eventRepo := repository.NewResponseEventRepo(db)
+	modelInvocationRepo := repository.NewModelInvocationRepo(db)
+	toolCallRepo := repository.NewToolCallRepo(db)
+	traceSpanRepo := repository.NewTraceSpanRepo(db)
+	auditRepo := repository.NewAuditLogRepo(db)
+	usageRepo := repository.NewUsageRepo(db)
 
 	// Cross-cutting.
 	rbacChecker := rbac.NewChecker(memberRepo)
 	jwtMgr := jwt.NewManager(cfg.Auth.JWTSecret, cfg.Auth.JWTIssuer, cfg.Auth.AccessTokenTTL())
+	tracer := observability.NewTracer(traceSpanRepo)
+	modelRouter, err := model.NewRouter(cfg.Model)
+	if err != nil {
+		return fmt.Errorf("init model router: %w", err)
+	}
+	toolRegistry := toolapp.NewRegistry()
+	if err := toolRegistry.Register(toolapp.NewCurrentTime()); err != nil {
+		return fmt.Errorf("register current_time: %w", err)
+	}
+	if err := toolRegistry.Register(toolapp.NewCalculator()); err != nil {
+		return fmt.Errorf("register calculator: %w", err)
+	}
 
 	// Application services.
 	authSvc := authapp.NewService(userRepo, jwtMgr, cfg.Auth.PasswordMinLength)
 	orgSvc := orgapp.NewService(orgRepo, memberRepo, userRepo, rbacChecker)
 	projectSvc := projectapp.NewService(projectRepo, orgRepo, rbacChecker)
+	conversationSvc := agentapp.NewConversationService(conversationRepo, projectRepo, rbacChecker)
+	orchestrator := agentapp.NewDefaultOrchestrator(agentapp.OrchestratorDeps{
+		Conversations: conversationSvc,
+		Messages:      messageRepo,
+		Events:        eventRepo,
+		ModelProvider: modelRouter.Primary(),
+		ModelName:     modelRouter.DefaultModel(),
+		Tools:         toolRegistry,
+		ModelCalls:    modelInvocationRepo,
+		ToolCalls:     toolCallRepo,
+		Audit:         auditRepo,
+		Usage:         usageRepo,
+		Tracer:        tracer,
+		Config:        cfg.Agent,
+	})
 
 	// HTTP handlers.
 	authHandler := v1.NewAuthHandler(authSvc, orgSvc)
 	orgHandler := v1.NewOrgHandler(orgSvc)
 	projectHandler := v1.NewProjectHandler(projectSvc)
+	responseHandler := v1.NewResponseHandler(orchestrator, eventRepo)
 	healthHandler := v1.NewHealthHandler()
 
 	handler := router.New(router.Deps{
-		Log:     lg,
-		Config:  cfg,
-		JWT:     jwtMgr,
-		Redis:   rdb,
-		RBAC:    rbacChecker,
-		Auth:    authHandler,
-		Org:     orgHandler,
-		Project: projectHandler,
-		Health:  healthHandler,
+		Log:      lg,
+		Config:   cfg,
+		JWT:      jwtMgr,
+		Redis:    rdb,
+		RBAC:     rbacChecker,
+		Auth:     authHandler,
+		Org:      orgHandler,
+		Project:  projectHandler,
+		Response: responseHandler,
+		Health:   healthHandler,
 	})
 
 	srv := &http.Server{

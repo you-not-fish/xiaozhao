@@ -19,15 +19,16 @@ import (
 
 // Deps groups everything the router needs from the outer composition root.
 type Deps struct {
-	Log       *zap.Logger
-	Config    *config.Config
-	JWT       *jwt.Manager
-	Redis     *redis.Client
-	RBAC      *rbac.Checker
-	Auth      *v1.AuthHandler
-	Org       *v1.OrgHandler
-	Project   *v1.ProjectHandler
-	Health    *v1.HealthHandler
+	Log      *zap.Logger
+	Config   *config.Config
+	JWT      *jwt.Manager
+	Redis    *redis.Client
+	RBAC     *rbac.Checker
+	Auth     *v1.AuthHandler
+	Org      *v1.OrgHandler
+	Project  *v1.ProjectHandler
+	Response *v1.ResponseHandler
+	Health   *v1.HealthHandler
 }
 
 // New builds the top-level HTTP router.
@@ -84,6 +85,10 @@ func New(d Deps) http.Handler {
 			r.Get("/projects/{projectID}", d.Project.Get)
 			r.Patch("/projects/{projectID}", d.Project.Update)
 			r.Delete("/projects/{projectID}", d.Project.Delete)
+			if d.Response != nil {
+				r.Post("/responses", d.Response.Create)
+				r.Get("/responses/{responseID}/events", d.Response.Events)
+			}
 		})
 	})
 

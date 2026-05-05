@@ -34,3 +34,22 @@ ratelimit:
   enabled: true
   per_user_per_minute: 120
   per_ip_per_minute: 300
+
+# 模型网关：P0 演示默认使用 mock Provider，保证无外部依赖即可跑通 Agent 链路。
+# 接入真实 OpenAI / 国内 OpenAI-compatible 供应商时，把 provider 切到 "openai"
+# 并在 openai.* 填入 base_url 与 api_key（推荐通过环境变量注入）。
+model:
+  provider: "mock"                 # mock | openai
+  default_model: "mock-default"    # provider=openai 时改成具体模型名，例如 gpt-4o-mini
+  openai:
+    name: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: ""                    # 推荐通过 XIAOZHAO_MODEL_OPENAI_API_KEY 环境变量注入
+    timeout_seconds: 60
+
+# Agent 运行参数。
+agent:
+  max_tool_iterations: 5           # 单次 response 内的工具循环最大轮数
+  model_timeout_seconds: 60
+  tool_timeout_seconds: 15
+  max_tool_result_kb: 64           # 工具结果截断阈值

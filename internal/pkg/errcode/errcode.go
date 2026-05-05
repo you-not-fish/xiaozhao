@@ -34,19 +34,22 @@ const (
 	CodeAuthPasswordWeak       Code = "auth_password_weak"
 
 	// Tenant
-	CodeOrgNotFound       Code = "org_not_found"
-	CodeOrgNotMember      Code = "org_not_member"
-	CodeProjectNotFound   Code = "project_not_found"
-	CodeInsufficientRole  Code = "insufficient_role"
+	CodeOrgNotFound      Code = "org_not_found"
+	CodeOrgNotMember     Code = "org_not_member"
+	CodeProjectNotFound  Code = "project_not_found"
+	CodeInsufficientRole Code = "insufficient_role"
 
 	// Model / Tool (future-facing, kept here to avoid sprawl)
-	CodeModelTimeout       Code = "model_timeout"
-	CodeModelRateLimited   Code = "model_rate_limited"
-	CodeModelAuthFailed    Code = "model_auth_failed"
-	CodeModelContextExceed Code = "model_context_exceeded"
-	CodeToolParamInvalid   Code = "tool_param_invalid"
-	CodeToolTimeout        Code = "tool_timeout"
-	CodeToolForbidden      Code = "tool_forbidden"
+	CodeModelTimeout               Code = "model_timeout"
+	CodeModelRateLimited           Code = "model_rate_limited"
+	CodeModelAuthFailed            Code = "model_auth_failed"
+	CodeModelContextExceed         Code = "model_context_exceeded"
+	CodeModelToolCallInvalid       Code = "model_tool_call_invalid"
+	CodeModelProviderUnavailable   Code = "model_provider_unavailable"
+	CodeModelFallbackNotCompatible Code = "model_fallback_not_compatible"
+	CodeToolParamInvalid           Code = "tool_param_invalid"
+	CodeToolTimeout                Code = "tool_timeout"
+	CodeToolForbidden              Code = "tool_forbidden"
 )
 
 // Error is the structured application error returned up the call stack.
@@ -124,7 +127,7 @@ func HTTPStatus(err error) int {
 
 func httpFor(code Code) int {
 	switch code {
-	case CodeInvalidArgument, CodeAuthPasswordWeak, CodeToolParamInvalid:
+	case CodeInvalidArgument, CodeAuthPasswordWeak, CodeToolParamInvalid, CodeModelToolCallInvalid, CodeModelFallbackNotCompatible:
 		return http.StatusBadRequest
 	case CodeUnauthorized, CodeAuthInvalidCredentials, CodeAuthTokenInvalid, CodeAuthTokenExpired:
 		return http.StatusUnauthorized
@@ -136,7 +139,7 @@ func httpFor(code Code) int {
 		return http.StatusConflict
 	case CodeRateLimited, CodeModelRateLimited:
 		return http.StatusTooManyRequests
-	case CodeUnavailable, CodeModelTimeout, CodeToolTimeout:
+	case CodeUnavailable, CodeModelTimeout, CodeToolTimeout, CodeModelProviderUnavailable:
 		return http.StatusServiceUnavailable
 	case CodeFeatureDisabled:
 		return http.StatusNotImplemented

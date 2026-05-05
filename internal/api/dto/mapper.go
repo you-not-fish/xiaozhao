@@ -72,6 +72,21 @@ func FromResponseEvent(e domain.ResponseEvent) ResponseEventResponse {
 	}
 }
 
+func FromFile(f *domain.File) FileResponse {
+	return FileResponse{
+		ID:        f.ID,
+		OrgID:     f.OrgID,
+		ProjectID: f.ProjectID,
+		Filename:  f.Filename,
+		MimeType:  f.MimeType,
+		SizeBytes: f.SizeBytes,
+		SHA256:    f.SHA256,
+		Purpose:   string(f.Purpose),
+		Status:    string(f.Status),
+		CreatedAt: f.CreatedAt,
+	}
+}
+
 // BuildTokenResponse wraps an access token pair.
 func BuildTokenResponse(accessToken string, expiresAt time.Time) TokenResponse {
 	return TokenResponse{

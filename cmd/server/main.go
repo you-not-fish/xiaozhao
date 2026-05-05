@@ -21,6 +21,7 @@ import (
 	v1 "github.com/xiaozhao/xiaozhao/internal/api/v1"
 	agentapp "github.com/xiaozhao/xiaozhao/internal/app/agent"
 	authapp "github.com/xiaozhao/xiaozhao/internal/app/auth"
+	fileapp "github.com/xiaozhao/xiaozhao/internal/app/file"
 	orgapp "github.com/xiaozhao/xiaozhao/internal/app/org"
 	projectapp "github.com/xiaozhao/xiaozhao/internal/app/project"
 	"github.com/xiaozhao/xiaozhao/internal/app/rbac"
@@ -30,6 +31,7 @@ import (
 	"github.com/xiaozhao/xiaozhao/internal/infra/migration"
 	"github.com/xiaozhao/xiaozhao/internal/infra/model"
 	"github.com/xiaozhao/xiaozhao/internal/infra/repository"
+	"github.com/xiaozhao/xiaozhao/internal/infra/storage"
 	"github.com/xiaozhao/xiaozhao/internal/observability"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/config"
 	"github.com/xiaozhao/xiaozhao/internal/pkg/jwt"
@@ -100,6 +102,8 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	traceSpanRepo := repository.NewTraceSpanRepo(db)
 	auditRepo := repository.NewAuditLogRepo(db)
 	usageRepo := repository.NewUsageRepo(db)
+	fileRepo := repository.NewFileRepo(db)
+	fileObjectRepo := repository.NewFileObjectRepo(db)
 
 	// Cross-cutting.
 	rbacChecker := rbac.NewChecker(memberRepo)
@@ -116,11 +120,28 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	if err := toolRegistry.Register(toolapp.NewCalculator()); err != nil {
 		return fmt.Errorf("register calculator: %w", err)
 	}
+	objectStore, err := storage.NewMinIOStore(ctx, storage.MinIOConfig{
+		Endpoint:         cfg.Storage.Endpoint,
+		AccessKey:        cfg.Storage.AccessKey,
+		SecretKey:        cfg.Storage.SecretKey,
+		Bucket:           cfg.Storage.Bucket,
+		Region:           cfg.Storage.Region,
+		UseSSL:           cfg.Storage.UseSSL,
+		AutoCreateBucket: cfg.Storage.AutoCreateBucket,
+	})
+	if err != nil {
+		return fmt.Errorf("init object storage: %w", err)
+	}
 
 	// Application services.
 	authSvc := authapp.NewService(userRepo, jwtMgr, cfg.Auth.PasswordMinLength)
 	orgSvc := orgapp.NewService(orgRepo, memberRepo, userRepo, rbacChecker)
 	projectSvc := projectapp.NewService(projectRepo, orgRepo, rbacChecker)
+	fileSvc := fileapp.NewService(fileRepo, fileObjectRepo, projectRepo, auditRepo, rbacChecker, objectStore, fileapp.Options{
+		Bucket:         cfg.Storage.Bucket,
+		Provider:       cfg.Storage.Provider,
+		MaxUploadBytes: cfg.Storage.MaxUploadBytes(),
+	})
 	conversationSvc := agentapp.NewConversationService(conversationRepo, projectRepo, rbacChecker)
 	orchestrator := agentapp.NewDefaultOrchestrator(agentapp.OrchestratorDeps{
 		Conversations: conversationSvc,
@@ -142,6 +163,7 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	orgHandler := v1.NewOrgHandler(orgSvc)
 	projectHandler := v1.NewProjectHandler(projectSvc)
 	responseHandler := v1.NewResponseHandler(orchestrator, eventRepo)
+	fileHandler := v1.NewFileHandler(fileSvc, cfg.Storage.MaxUploadBytes())
 	healthHandler := v1.NewHealthHandler()
 
 	handler := router.New(router.Deps{
@@ -154,6 +176,7 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 		Org:      orgHandler,
 		Project:  projectHandler,
 		Response: responseHandler,
+		File:     fileHandler,
 		Health:   healthHandler,
 	})
 

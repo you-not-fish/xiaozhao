@@ -147,3 +147,22 @@ type ResponseEventResponse struct {
 type ResponseEventListResponse struct {
 	Items []ResponseEventResponse `json:"items"`
 }
+
+// --- Files ---
+
+type FileResponse struct {
+	ID        string    `json:"id"`
+	OrgID     string    `json:"org_id"`
+	ProjectID string    `json:"project_id"`
+	Filename  string    `json:"filename"`
+	MimeType  string    `json:"mime_type"`
+	SizeBytes int64     `json:"size_bytes"`
+	SHA256    string    `json:"sha256"`
+	Purpose   string    `json:"purpose"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type FileListResponse struct {
+	Items []FileResponse `json:"items"`
+}

@@ -20,6 +20,7 @@ type Config struct {
 	RateLimit RateLimitConfig `mapstructure:"ratelimit"`
 	Model     ModelConfig     `mapstructure:"model"`
 	Agent     AgentConfig     `mapstructure:"agent"`
+	Storage   StorageConfig   `mapstructure:"storage"`
 }
 
 type ServerConfig struct {
@@ -123,6 +124,22 @@ type AgentConfig struct {
 	MaxToolResultKB   int `mapstructure:"max_tool_result_kb"` // 工具结果截断阈值
 }
 
+type StorageConfig struct {
+	Provider         string `mapstructure:"provider"`
+	Endpoint         string `mapstructure:"endpoint"`
+	AccessKey        string `mapstructure:"access_key"`
+	SecretKey        string `mapstructure:"secret_key"`
+	Bucket           string `mapstructure:"bucket"`
+	Region           string `mapstructure:"region"`
+	UseSSL           bool   `mapstructure:"use_ssl"`
+	AutoCreateBucket bool   `mapstructure:"auto_create_bucket"`
+	MaxUploadMB      int64  `mapstructure:"max_upload_mb"`
+}
+
+func (s StorageConfig) MaxUploadBytes() int64 {
+	return s.MaxUploadMB * 1024 * 1024
+}
+
 // Load reads the configuration from the given path. Environment variables
 // with prefix XIAOZHAO_ override values from the file.
 func Load(path string) (*Config, error) {
@@ -198,6 +215,21 @@ func (c *Config) validate() error {
 	}
 	if c.Agent.MaxToolResultKB <= 0 {
 		c.Agent.MaxToolResultKB = 64
+	}
+	if c.Storage.Provider == "" {
+		c.Storage.Provider = "minio"
+	}
+	if c.Storage.Provider != "minio" {
+		return fmt.Errorf("storage.provider must be minio (got %q)", c.Storage.Provider)
+	}
+	if c.Storage.Endpoint == "" {
+		return fmt.Errorf("storage.endpoint must not be empty")
+	}
+	if c.Storage.Bucket == "" {
+		return fmt.Errorf("storage.bucket must not be empty")
+	}
+	if c.Storage.MaxUploadMB <= 0 {
+		c.Storage.MaxUploadMB = 50
 	}
 	return nil
 }

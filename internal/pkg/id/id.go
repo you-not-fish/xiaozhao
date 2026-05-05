@@ -29,6 +29,7 @@ const (
 	PrefixToolCall     Prefix = "call"
 	PrefixToolDef      Prefix = "tool"
 	PrefixFile         Prefix = "file"
+	PrefixFileObject   Prefix = "fobj"
 	PrefixKnowledge    Prefix = "kb"
 	PrefixDocument     Prefix = "doc"
 	PrefixChunk        Prefix = "chk"

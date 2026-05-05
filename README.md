@@ -1,7 +1,7 @@
 # xiaozhao — AI Agent 团队知识助理 MVP 后端
 
 这是 `docs/MVP需求与技术实现方案.md` 描述的 Go 模块化单体后端。
-当前仓库完成了 **P0 前置：工程骨架 + 账号/组织/项目/RBAC** 的闭环，为后续会话、知识库、工具编排、模型网关、审计追溯打好租户隔离基础。
+当前仓库已完成 **P0 Agent 核心闭环** 与 **P1 文件上传/对象存储基础能力**：账号、组织、项目、RBAC、Responses SSE、模型/工具循环、审计/用量记录、文件元数据和 S3-compatible 对象存储。
 
 ## 目录结构
 
@@ -18,10 +18,12 @@ internal/
     v1/                    HTTP handler（薄层：解码 → 调用服务 → 映射 DTO）
   app/
     auth/                  注册、登录、/me、切换组织
+    agent/                 Responses SSE、会话、Agent Orchestrator
+    file/                  文件上传、下载、软删除、对象存储编排
     org/                   组织创建、成员增删改查、RBAC 入口
     project/               项目 CRUD
     rbac/                  基于 Role 等级的授权中心
-  domain/                  实体与仓储接口（User / Organization / OrgMember / Project）
+  domain/                  实体与仓储接口
   gateway/
     httpctx/               请求上下文键（request_id / user_id / org_id）
     middleware/            request_id / logging / recovery / auth / tenant / ratelimit
@@ -29,7 +31,9 @@ internal/
     cache/                 Redis 客户端
     database/              PostgreSQL 连接池 + GORM 日志桥接 zap
     migration/             SQL 迁移 + embed（schema_migrations 记录版本）
+    model/                 模型 Provider / Router 适配
     repository/            GORM 仓储实现（domain 接口的具体实现）
+    storage/               S3-compatible / MinIO 对象存储抽象
   pkg/
     config/                viper 配置加载
     errcode/               结构化错误码 + HTTP 映射
@@ -47,11 +51,12 @@ internal/
 - Go 1.23+
 - PostgreSQL 14+（MVP 期间不需要 pgvector，P1 引入）
 - Redis 7+（可选，不可用时限流降级为放行）
+- MinIO 或 S3-compatible 对象存储（开发环境 docker compose 已包含 MinIO）
 
 最简启动：
 
 ```bash
-make docker-up     # 启动 postgres + redis
+make docker-up     # 启动 postgres + redis + minio
 make run           # 默认读取 configs/config.yaml
 ```
 
@@ -80,6 +85,11 @@ make run           # 默认读取 configs/config.yaml
 | DELETE /v1/projects/{projectID}             | 删除（admin+）          | Bearer    | —     |
 | POST /v1/responses                          | 创建 Agent 响应（SSE） | Bearer    | X-Organization-Id 或 JWT 内 |
 | GET  /v1/responses/{responseID}/events      | 回放响应事件            | Bearer    | 同上  |
+| POST /v1/files                              | multipart 上传文件      | Bearer    | 同上  |
+| GET  /v1/files?project_id=...               | 列出项目文件            | Bearer    | 同上  |
+| GET  /v1/files/{fileID}                     | 获取文件元数据          | Bearer    | 同上  |
+| GET  /v1/files/{fileID}/content             | 后端鉴权代理下载文件    | Bearer    | 同上  |
+| DELETE /v1/files/{fileID}                   | 软删除文件并清理对象    | Bearer    | 同上  |
 
 统一响应 Envelope：
 
@@ -123,20 +133,23 @@ go test ./... -race
 - `pkg/password` bcrypt round-trip、空输入拒绝
 - `app/agent` P0 状态机：无工具、工具调用、工具失败、工具结果截断、模型失败
 - `api/v1` responses handler：鉴权、租户上下文、SSE header、事件回放租户校验
+- `app/file` 文件上传：大小限制、空文件拒绝、MIME sniff、对象存储失败、软删除、跨租户不可见
+- `api/v1` files handler：鉴权、租户上下文、multipart 校验、文件下载、跨租户不可见
 
 ## 下一步建议
 
-P0 核心闭环已打通：
+已完成：
 
 1. `POST /v1/responses` SSE demo + `response_events` 表（事件先持久化再推）
 2. Model Gateway（mock / OpenAI-compatible）与内置 `current_time`、`calculator` 工具
 3. 基础 trace/span 记录（`trace_spans` 表 + `internal/observability`）
 4. 模型调用、工具调用、审计日志、用量流水仓储
+5. `POST /v1/files` 文件上传、`files/file_objects` 元数据、MinIO/S3-compatible 存取、后端代理下载、软删除
 
-后续按 P1 推进：
+后续按知识库闭环推进：
 
-1. 文件上传与对象存储
-2. 文档解析、chunk、embedding、pgvector 检索
+1. 文档解析、chunk、embedding、pgvector 检索
+2. 文件上传后接入知识库入库任务
 3. `knowledge_search` 工具
 4. `web_search` 工具
 5. 管理后台 API：用量、审计、tool calls、model invocations、trace 查询

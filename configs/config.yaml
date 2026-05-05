@@ -53,3 +53,15 @@ agent:
   model_timeout_seconds: 60
   tool_timeout_seconds: 15
   max_tool_result_kb: 64           # 工具结果截断阈值
+
+# 文件上传对象存储。MVP 使用后端鉴权直传到 S3-compatible/MinIO。
+storage:
+  provider: "minio"
+  endpoint: "127.0.0.1:9000"
+  access_key: "xiaozhao"
+  secret_key: "xiaozhao123"
+  bucket: "xiaozhao-files"
+  region: "us-east-1"
+  use_ssl: false
+  auto_create_bucket: true
+  max_upload_mb: 50

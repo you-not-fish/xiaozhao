@@ -28,6 +28,7 @@ type Deps struct {
 	Org      *v1.OrgHandler
 	Project  *v1.ProjectHandler
 	Response *v1.ResponseHandler
+	File     *v1.FileHandler
 	Health   *v1.HealthHandler
 }
 
@@ -88,6 +89,13 @@ func New(d Deps) http.Handler {
 			if d.Response != nil {
 				r.Post("/responses", d.Response.Create)
 				r.Get("/responses/{responseID}/events", d.Response.Events)
+			}
+			if d.File != nil {
+				r.Post("/files", d.File.Upload)
+				r.Get("/files", d.File.List)
+				r.Get("/files/{fileID}", d.File.Get)
+				r.Get("/files/{fileID}/content", d.File.Content)
+				r.Delete("/files/{fileID}", d.File.Delete)
 			}
 		})
 	})

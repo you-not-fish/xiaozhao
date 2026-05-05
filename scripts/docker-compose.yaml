@@ -32,6 +32,21 @@ services:
       timeout: 3s
       retries: 10
 
+  minio:
+    image: minio/minio:latest
+    container_name: xiaozhao-minio
+    environment:
+      MINIO_ROOT_USER: xiaozhao
+      MINIO_ROOT_PASSWORD: xiaozhao123
+      TZ: Asia/Shanghai
+    command: server /data --console-address ":9001"
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - xiaozhao-minio-data:/data
+
 volumes:
   xiaozhao-pg-data:
   xiaozhao-redis-data:
+  xiaozhao-minio-data:

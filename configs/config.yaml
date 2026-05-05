@@ -47,6 +47,18 @@ model:
     api_key: ""                    # 推荐通过 XIAOZHAO_MODEL_OPENAI_API_KEY 环境变量注入
     timeout_seconds: 60
 
+# Embedding 网关：本地默认 mock，真实知识库检索可切到 OpenAI-compatible。
+embedding:
+  provider: "mock"                 # mock | openai
+  model: "text-embedding-3-small"
+  dim: 1536
+  openai:
+    name: "openai"
+    base_url: "https://api.openai.com/v1"
+    api_key: ""                    # 推荐通过 XIAOZHAO_EMBEDDING_OPENAI_API_KEY 环境变量注入
+    model: "text-embedding-3-small"
+    timeout_seconds: 60
+
 # Agent 运行参数。
 agent:
   max_tool_iterations: 5           # 单次 response 内的工具循环最大轮数

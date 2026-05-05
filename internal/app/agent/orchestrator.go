@@ -413,6 +413,20 @@ func (o *DefaultOrchestrator) executeTool(
 
 	args := map[string]any{}
 	_ = json.Unmarshal(call.Arguments, &args)
+	execArgs := call.Arguments
+	if call.Name == "knowledge_search" {
+		// knowledge_search 是租户敏感工具，模型只给 query；组织/项目/用户和
+		// 本次请求允许的知识库范围必须由 Orchestrator 注入，避免模型越权扩域。
+		args["org_id"] = req.OrgID
+		args["project_id"] = req.ProjectID
+		args["user_id"] = req.UserID
+		if allowed := req.ToolKnowledgeBaseIDs[call.Name]; len(allowed) > 0 {
+			args["allowed_knowledge_base_ids"] = allowed
+		}
+		if b, err := json.Marshal(args); err == nil {
+			execArgs = b
+		}
+	}
 	argsHash := hashBytes(call.Arguments)
 	tc := &domain.ToolCall{
 		ID:           id.New(id.PrefixToolCall),
@@ -451,7 +465,7 @@ func (o *DefaultOrchestrator) executeTool(
 		CreatedAt: time.Now(),
 	})
 
-	result, latency, err := o.tools.Execute(ctx, call.Name, call.Arguments)
+	result, latency, err := o.tools.Execute(ctx, call.Name, execArgs)
 	tc.LatencyMS = int(latency / time.Millisecond)
 	if err != nil {
 		span.MarkError(err)

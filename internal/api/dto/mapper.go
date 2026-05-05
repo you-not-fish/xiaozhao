@@ -87,6 +87,60 @@ func FromFile(f *domain.File) FileResponse {
 	}
 }
 
+func FromKnowledgeBase(kb *domain.KnowledgeBase) KnowledgeBaseResponse {
+	return KnowledgeBaseResponse{
+		ID:              kb.ID,
+		OrgID:           kb.OrgID,
+		ProjectID:       kb.ProjectID,
+		Name:            kb.Name,
+		Description:     kb.Description,
+		Visibility:      string(kb.Visibility),
+		EmbeddingModel:  kb.EmbeddingModel,
+		EmbeddingDim:    kb.EmbeddingDim,
+		ChunkConfig:     kb.ChunkConfig,
+		RetrievalConfig: kb.RetrievalConfig,
+		Status:          string(kb.Status),
+		CreatedAt:       kb.CreatedAt,
+	}
+}
+
+func FromDocument(doc *domain.Document) DocumentResponse {
+	return DocumentResponse{
+		ID:              doc.ID,
+		OrgID:           doc.OrgID,
+		ProjectID:       doc.ProjectID,
+		KnowledgeBaseID: doc.KnowledgeBaseID,
+		FileID:          doc.FileID,
+		Filename:        doc.Filename,
+		MimeType:        doc.MimeType,
+		Status:          string(doc.Status),
+		ParseError:      doc.ParseError,
+		ChunkCount:      doc.ChunkCount,
+		CharCount:       doc.CharCount,
+		TokenCount:      doc.TokenCount,
+		CreatedAt:       doc.CreatedAt,
+	}
+}
+
+func FromKnowledgeSearchResult(r domain.KnowledgeSearchResult) KnowledgeSearchResultResponse {
+	return KnowledgeSearchResultResponse{
+		ChunkID:         r.ChunkID,
+		DocumentID:      r.DocumentID,
+		FileID:          r.FileID,
+		Filename:        r.Filename,
+		KnowledgeBaseID: r.KnowledgeBaseID,
+		Content:         r.Content,
+		Score:           r.Score,
+		Citation: map[string]any{
+			"file_id":     r.FileID,
+			"filename":    r.Filename,
+			"document_id": r.DocumentID,
+			"chunk_id":    r.ChunkID,
+			"metadata":    r.Metadata,
+		},
+	}
+}
+
 // BuildTokenResponse wraps an access token pair.
 func BuildTokenResponse(accessToken string, expiresAt time.Time) TokenResponse {
 	return TokenResponse{

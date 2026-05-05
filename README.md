@@ -1,7 +1,7 @@
 # xiaozhao — AI Agent 团队知识助理 MVP 后端
 
 这是 `docs/MVP需求与技术实现方案.md` 描述的 Go 模块化单体后端。
-当前仓库已完成 **P0 Agent 核心闭环** 与 **P1 文件上传/对象存储基础能力**：账号、组织、项目、RBAC、Responses SSE、模型/工具循环、审计/用量记录、文件元数据和 S3-compatible 对象存储。
+当前仓库已完成 **P0 Agent 核心闭环**、**P1 文件上传/对象存储基础能力** 与 **P1 知识库检索闭环**：账号、组织、项目、RBAC、Responses SSE、模型/工具循环、审计/用量记录、文件元数据、S3-compatible 对象存储、文档解析、chunk、embedding、pgvector 检索和 `knowledge_search` 工具。
 
 ## 目录结构
 
@@ -20,6 +20,7 @@ internal/
     auth/                  注册、登录、/me、切换组织
     agent/                 Responses SSE、会话、Agent Orchestrator
     file/                  文件上传、下载、软删除、对象存储编排
+    knowledge/             知识库、文档入库、chunk、检索编排
     org/                   组织创建、成员增删改查、RBAC 入口
     project/               项目 CRUD
     rbac/                  基于 Role 等级的授权中心
@@ -30,8 +31,10 @@ internal/
   infra/
     cache/                 Redis 客户端
     database/              PostgreSQL 连接池 + GORM 日志桥接 zap
+    embedding/             Embedding Provider（mock / OpenAI-compatible）
     migration/             SQL 迁移 + embed（schema_migrations 记录版本）
     model/                 模型 Provider / Router 适配
+    parser/                TXT / Markdown / CSV / DOCX / PDF 基础文本解析
     repository/            GORM 仓储实现（domain 接口的具体实现）
     storage/               S3-compatible / MinIO 对象存储抽象
   pkg/
@@ -49,7 +52,7 @@ internal/
 ## 运行前置
 
 - Go 1.23+
-- PostgreSQL 14+（MVP 期间不需要 pgvector，P1 引入）
+- PostgreSQL 14+ with pgvector（开发环境 docker compose 使用 `pgvector/pgvector:pg16`）
 - Redis 7+（可选，不可用时限流降级为放行）
 - MinIO 或 S3-compatible 对象存储（开发环境 docker compose 已包含 MinIO）
 
@@ -90,6 +93,12 @@ make run           # 默认读取 configs/config.yaml
 | GET  /v1/files/{fileID}                     | 获取文件元数据          | Bearer    | 同上  |
 | GET  /v1/files/{fileID}/content             | 后端鉴权代理下载文件    | Bearer    | 同上  |
 | DELETE /v1/files/{fileID}                   | 软删除文件并清理对象    | Bearer    | 同上  |
+| POST /v1/knowledge_bases                    | 创建知识库（admin+）    | Bearer    | 同上  |
+| GET  /v1/knowledge_bases?project_id=...     | 列出项目知识库          | Bearer    | 同上  |
+| GET  /v1/knowledge_bases/{kbID}             | 获取知识库              | Bearer    | 同上  |
+| POST /v1/knowledge_bases/{kbID}/documents   | 挂载文件并异步入库      | Bearer    | 同上  |
+| GET  /v1/knowledge_bases/{kbID}/documents   | 查看文档入库状态        | Bearer    | 同上  |
+| POST /v1/knowledge_bases/{kbID}/search      | 检索知识库 chunk        | Bearer    | 同上  |
 
 统一响应 Envelope：
 
@@ -135,6 +144,9 @@ go test ./... -race
 - `api/v1` responses handler：鉴权、租户上下文、SSE header、事件回放租户校验
 - `app/file` 文件上传：大小限制、空文件拒绝、MIME sniff、对象存储失败、软删除、跨租户不可见
 - `api/v1` files handler：鉴权、租户上下文、multipart 校验、文件下载、跨租户不可见
+- `infra/parser` 文档解析：TXT/Markdown、CSV、DOCX、基础 PDF 文本抽取、空文档拒绝
+- `app/knowledge`：知识库创建、文件挂载、文档状态流转、chunk 入库、租户隔离、检索
+- `infra/embedding`：mock embedding 维度稳定和确定性
 
 ## 下一步建议
 
@@ -145,11 +157,12 @@ go test ./... -race
 3. 基础 trace/span 记录（`trace_spans` 表 + `internal/observability`）
 4. 模型调用、工具调用、审计日志、用量流水仓储
 5. `POST /v1/files` 文件上传、`files/file_objects` 元数据、MinIO/S3-compatible 存取、后端代理下载、软删除
+6. `POST /v1/knowledge_bases`、文档挂载、Go 文本解析、chunk、mock/OpenAI-compatible embedding、pgvector 检索
+7. `knowledge_search` 内置工具，按 response 请求中的 `knowledge_base_ids` 收窄检索范围
 
-后续按知识库闭环推进：
+后续按 RAG 质量和运营能力推进：
 
-1. 文档解析、chunk、embedding、pgvector 检索
-2. 文件上传后接入知识库入库任务
-3. `knowledge_search` 工具
-4. `web_search` 工具
-5. 管理后台 API：用量、审计、tool calls、model invocations、trace 查询
+1. 更高保真 PDF/DOCX 解析、表格结构化和 OCR，可通过 Python parser worker 扩展
+2. Rerank、检索评测集、召回率/引用准确率回归
+3. `web_search` 工具
+4. 管理后台 API：用量、审计、tool calls、model invocations、trace 查询

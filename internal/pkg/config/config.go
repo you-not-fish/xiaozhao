@@ -19,6 +19,7 @@ type Config struct {
 	Auth      AuthConfig      `mapstructure:"auth"`
 	RateLimit RateLimitConfig `mapstructure:"ratelimit"`
 	Model     ModelConfig     `mapstructure:"model"`
+	Embedding EmbeddingConfig `mapstructure:"embedding"`
 	Agent     AgentConfig     `mapstructure:"agent"`
 	Storage   StorageConfig   `mapstructure:"storage"`
 }
@@ -116,6 +117,21 @@ type OpenAIProviderConfig struct {
 	TimeoutSeconds int    `mapstructure:"timeout_seconds"` // 单次调用超时
 }
 
+type EmbeddingConfig struct {
+	Provider string                `mapstructure:"provider"`
+	Model    string                `mapstructure:"model"`
+	Dim      int                   `mapstructure:"dim"`
+	OpenAI   OpenAIEmbeddingConfig `mapstructure:"openai"`
+}
+
+type OpenAIEmbeddingConfig struct {
+	Name           string `mapstructure:"name"`
+	BaseURL        string `mapstructure:"base_url"`
+	APIKey         string `mapstructure:"api_key"`
+	Model          string `mapstructure:"model"`
+	TimeoutSeconds int    `mapstructure:"timeout_seconds"`
+}
+
 // AgentConfig 控制 Agent Orchestrator 的运行参数。
 type AgentConfig struct {
 	MaxToolIterations int `mapstructure:"max_tool_iterations"` // 工具循环上限，默认 5
@@ -203,6 +219,37 @@ func (c *Config) validate() error {
 		}
 	default:
 		return fmt.Errorf("model.provider must be one of: mock, openai (got %q)", c.Model.Provider)
+	}
+	if c.Embedding.Provider == "" {
+		c.Embedding.Provider = "mock"
+	}
+	if c.Embedding.Model == "" {
+		c.Embedding.Model = "text-embedding-3-small"
+	}
+	if c.Embedding.Dim <= 0 {
+		c.Embedding.Dim = 1536
+	}
+	if c.Embedding.Dim != 1536 {
+		return fmt.Errorf("embedding.dim must be 1536 for MVP pgvector schema")
+	}
+	if c.Embedding.Provider == "openai" {
+		if c.Embedding.OpenAI.BaseURL == "" {
+			return fmt.Errorf("embedding.openai.base_url must not be empty when provider=openai")
+		}
+		if c.Embedding.OpenAI.APIKey == "" {
+			return fmt.Errorf("embedding.openai.api_key must not be empty when provider=openai")
+		}
+		if c.Embedding.OpenAI.Name == "" {
+			c.Embedding.OpenAI.Name = "openai"
+		}
+		if c.Embedding.OpenAI.Model == "" {
+			c.Embedding.OpenAI.Model = c.Embedding.Model
+		}
+		if c.Embedding.OpenAI.TimeoutSeconds <= 0 {
+			c.Embedding.OpenAI.TimeoutSeconds = 60
+		}
+	} else if c.Embedding.Provider != "mock" {
+		return fmt.Errorf("embedding.provider must be one of: mock, openai (got %q)", c.Embedding.Provider)
 	}
 	if c.Agent.MaxToolIterations <= 0 {
 		c.Agent.MaxToolIterations = 5

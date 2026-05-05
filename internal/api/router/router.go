@@ -19,17 +19,18 @@ import (
 
 // Deps groups everything the router needs from the outer composition root.
 type Deps struct {
-	Log      *zap.Logger
-	Config   *config.Config
-	JWT      *jwt.Manager
-	Redis    *redis.Client
-	RBAC     *rbac.Checker
-	Auth     *v1.AuthHandler
-	Org      *v1.OrgHandler
-	Project  *v1.ProjectHandler
-	Response *v1.ResponseHandler
-	File     *v1.FileHandler
-	Health   *v1.HealthHandler
+	Log       *zap.Logger
+	Config    *config.Config
+	JWT       *jwt.Manager
+	Redis     *redis.Client
+	RBAC      *rbac.Checker
+	Auth      *v1.AuthHandler
+	Org       *v1.OrgHandler
+	Project   *v1.ProjectHandler
+	Response  *v1.ResponseHandler
+	File      *v1.FileHandler
+	Knowledge *v1.KnowledgeHandler
+	Health    *v1.HealthHandler
 }
 
 // New builds the top-level HTTP router.
@@ -96,6 +97,16 @@ func New(d Deps) http.Handler {
 				r.Get("/files/{fileID}", d.File.Get)
 				r.Get("/files/{fileID}/content", d.File.Content)
 				r.Delete("/files/{fileID}", d.File.Delete)
+			}
+			if d.Knowledge != nil {
+				r.Post("/knowledge_bases", d.Knowledge.Create)
+				r.Get("/knowledge_bases", d.Knowledge.List)
+				r.Get("/knowledge_bases/{kbID}", d.Knowledge.Get)
+				r.Delete("/knowledge_bases/{kbID}", d.Knowledge.Delete)
+				r.Post("/knowledge_bases/{kbID}/documents", d.Knowledge.AddDocument)
+				r.Get("/knowledge_bases/{kbID}/documents", d.Knowledge.ListDocuments)
+				r.Delete("/knowledge_bases/{kbID}/documents/{docID}", d.Knowledge.DeleteDocument)
+				r.Post("/knowledge_bases/{kbID}/search", d.Knowledge.Search)
 			}
 		})
 	})

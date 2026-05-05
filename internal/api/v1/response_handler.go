@@ -46,14 +46,15 @@ func (h *ResponseHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	result, err := h.orchestrator.Run(r.Context(), agent.RunRequest{
-		OrgID:          orgID,
-		ProjectID:      req.ProjectID,
-		UserID:         uid,
-		ConversationID: req.ConversationID,
-		Input:          req.Input,
-		EnabledTools:   requestedTools(req.Tools),
-		Model:          req.Model,
-		Stream:         true,
+		OrgID:                orgID,
+		ProjectID:            req.ProjectID,
+		UserID:               uid,
+		ConversationID:       req.ConversationID,
+		Input:                req.Input,
+		EnabledTools:         requestedTools(req.Tools),
+		ToolKnowledgeBaseIDs: requestedToolKnowledgeBases(req.Tools),
+		Model:                req.Model,
+		Stream:               true,
 	})
 	if err != nil {
 		response.WriteError(r.Context(), w, err)
@@ -118,6 +119,17 @@ func requestedTools(tools []dto.ResponseToolRequest) []string {
 		if t.Type != "" {
 			out = append(out, t.Type)
 		}
+	}
+	return out
+}
+
+func requestedToolKnowledgeBases(tools []dto.ResponseToolRequest) map[string][]string {
+	out := map[string][]string{}
+	for _, t := range tools {
+		if t.Type == "" || len(t.KnowledgeBaseIDs) == 0 {
+			continue
+		}
+		out[t.Type] = append(out[t.Type], t.KnowledgeBaseIDs...)
 	}
 	return out
 }

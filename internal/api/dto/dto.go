@@ -166,3 +166,78 @@ type FileResponse struct {
 type FileListResponse struct {
 	Items []FileResponse `json:"items"`
 }
+
+// --- Knowledge ---
+
+type CreateKnowledgeBaseRequest struct {
+	ProjectID   string `json:"project_id" validate:"required"`
+	Name        string `json:"name" validate:"required,max=128"`
+	Description string `json:"description,omitempty"`
+}
+
+type KnowledgeBaseResponse struct {
+	ID              string         `json:"id"`
+	OrgID           string         `json:"org_id"`
+	ProjectID       string         `json:"project_id"`
+	Name            string         `json:"name"`
+	Description     string         `json:"description"`
+	Visibility      string         `json:"visibility"`
+	EmbeddingModel  string         `json:"embedding_model"`
+	EmbeddingDim    int            `json:"embedding_dim"`
+	ChunkConfig     map[string]any `json:"chunk_config"`
+	RetrievalConfig map[string]any `json:"retrieval_config"`
+	Status          string         `json:"status"`
+	CreatedAt       time.Time      `json:"created_at"`
+}
+
+type KnowledgeBaseListResponse struct {
+	Items      []KnowledgeBaseResponse `json:"items"`
+	NextCursor string                  `json:"next_cursor,omitempty"`
+}
+
+type AddDocumentRequest struct {
+	FileID string `json:"file_id" validate:"required"`
+}
+
+type DocumentResponse struct {
+	ID              string    `json:"id"`
+	OrgID           string    `json:"org_id"`
+	ProjectID       string    `json:"project_id"`
+	KnowledgeBaseID string    `json:"knowledge_base_id"`
+	FileID          string    `json:"file_id"`
+	Filename        string    `json:"filename"`
+	MimeType        string    `json:"mime_type"`
+	Status          string    `json:"status"`
+	ParseError      string    `json:"parse_error,omitempty"`
+	ChunkCount      int       `json:"chunk_count"`
+	CharCount       int       `json:"char_count"`
+	TokenCount      int       `json:"token_count"`
+	CreatedAt       time.Time `json:"created_at"`
+}
+
+type DocumentListResponse struct {
+	Items      []DocumentResponse `json:"items"`
+	NextCursor string             `json:"next_cursor,omitempty"`
+}
+
+type KnowledgeSearchRequest struct {
+	Query          string   `json:"query" validate:"required"`
+	TopK           int      `json:"top_k,omitempty"`
+	ScoreThreshold float64  `json:"score_threshold,omitempty"`
+	DocumentIDs    []string `json:"document_ids,omitempty"`
+}
+
+type KnowledgeSearchResultResponse struct {
+	ChunkID         string         `json:"chunk_id"`
+	DocumentID      string         `json:"document_id"`
+	FileID          string         `json:"file_id"`
+	Filename        string         `json:"filename"`
+	KnowledgeBaseID string         `json:"knowledge_base_id"`
+	Content         string         `json:"content"`
+	Score           float64        `json:"score"`
+	Citation        map[string]any `json:"citation"`
+}
+
+type KnowledgeSearchResponse struct {
+	Items []KnowledgeSearchResultResponse `json:"items"`
+}

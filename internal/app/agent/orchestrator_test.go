@@ -69,6 +69,42 @@ func TestOrchestratorToolLoopCompletes(t *testing.T) {
 	}
 }
 
+func TestOrchestratorOverridesForgedKnowledgeSearchScope(t *testing.T) {
+	fx := newAgentFixture(t, model.NewMockProvider(
+		model.MockScript{
+			ToolCalls: []model.ToolCall{{
+				ID:        "call_knowledge",
+				Name:      "knowledge_search",
+				Arguments: json.RawMessage(`{"query":"退款","org_id":"evil_org","project_id":"evil_proj","user_id":"evil_user","allowed_knowledge_base_ids":["kb_evil"]}`),
+			}},
+		},
+		model.MockScript{Text: "done", Finish: model.FinishStop},
+	))
+	capture := &captureArgsTool{name: "knowledge_search"}
+	if err := fx.tools.Register(capture); err != nil {
+		t.Fatalf("register knowledge_search: %v", err)
+	}
+	req := baseRunRequest()
+	req.ToolKnowledgeBaseIDs = map[string][]string{"knowledge_search": {"kb_1"}}
+
+	res, err := fx.orch.Run(context.Background(), req)
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	_, finalErr := drainEvents(res.Events)
+	if finalErr != nil {
+		t.Fatalf("final error = %v", finalErr)
+	}
+	got := capture.args
+	if got["org_id"] != "org_1" || got["project_id"] != "proj_1" || got["user_id"] != "user_1" {
+		t.Fatalf("tenant args not overridden: %#v", got)
+	}
+	allowed, ok := got["allowed_knowledge_base_ids"].([]any)
+	if !ok || len(allowed) != 1 || allowed[0] != "kb_1" {
+		t.Fatalf("allowed KBs = %#v", got["allowed_knowledge_base_ids"])
+	}
+}
+
 func TestOrchestratorMissingToolFails(t *testing.T) {
 	fx := newAgentFixture(t, model.NewMockProvider(model.MockScript{
 		ToolCalls: []model.ToolCall{{
@@ -243,6 +279,27 @@ func (bigResultTool) Spec() tool.Spec {
 
 func (bigResultTool) Execute(context.Context, json.RawMessage) (any, error) {
 	return map[string]any{"text": strings.Repeat("x", 2048)}, nil
+}
+
+type captureArgsTool struct {
+	name string
+	args map[string]any
+}
+
+func (t *captureArgsTool) Spec() tool.Spec {
+	return tool.Spec{
+		Name:         t.name,
+		Description:  "capture args",
+		InputSchema:  json.RawMessage(`{"type":"object"}`),
+		OutputSchema: json.RawMessage(`{"type":"object"}`),
+		TimeoutMS:    1000,
+		ProviderType: "builtin",
+	}
+}
+
+func (t *captureArgsTool) Execute(_ context.Context, args json.RawMessage) (any, error) {
+	_ = json.Unmarshal(args, &t.args)
+	return map[string]any{"ok": true}, nil
 }
 
 type failingProvider struct{}

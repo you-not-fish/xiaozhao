@@ -15,16 +15,17 @@ import (
 //   - EnabledTools：允许逐请求收窄工具集合，配合权限策略；
 //   - Stream：MVP 永远 true，保留字段是为了后续支持非流式 batch 调用。
 type RunRequest struct {
-	OrgID          string
-	ProjectID      string
-	UserID         string
-	ConversationID string
-	Input          string
-	EnabledTools   []string // 空表示使用全部已注册工具
-	Model          string   // 空表示使用 Router.DefaultModel
-	AgentID        string   // 预留
-	RunMode        string   // 预留：single / handoff / workflow
-	Stream         bool
+	OrgID                string
+	ProjectID            string
+	UserID               string
+	ConversationID       string
+	Input                string
+	EnabledTools         []string            // 空表示使用全部已注册工具
+	ToolKnowledgeBaseIDs map[string][]string // 每个工具允许访问的知识库范围
+	Model                string              // 空表示使用 Router.DefaultModel
+	AgentID              string              // 预留
+	RunMode              string              // 预留：single / handoff / workflow
+	Stream               bool
 }
 
 // SSE 输出事件，对外承诺与 domain.EventType 一致。

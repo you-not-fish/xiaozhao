@@ -22,14 +22,17 @@ import (
 	agentapp "github.com/xiaozhao/xiaozhao/internal/app/agent"
 	authapp "github.com/xiaozhao/xiaozhao/internal/app/auth"
 	fileapp "github.com/xiaozhao/xiaozhao/internal/app/file"
+	knowledgeapp "github.com/xiaozhao/xiaozhao/internal/app/knowledge"
 	orgapp "github.com/xiaozhao/xiaozhao/internal/app/org"
 	projectapp "github.com/xiaozhao/xiaozhao/internal/app/project"
 	"github.com/xiaozhao/xiaozhao/internal/app/rbac"
 	toolapp "github.com/xiaozhao/xiaozhao/internal/app/tool"
 	"github.com/xiaozhao/xiaozhao/internal/infra/cache"
 	"github.com/xiaozhao/xiaozhao/internal/infra/database"
+	"github.com/xiaozhao/xiaozhao/internal/infra/embedding"
 	"github.com/xiaozhao/xiaozhao/internal/infra/migration"
 	"github.com/xiaozhao/xiaozhao/internal/infra/model"
+	"github.com/xiaozhao/xiaozhao/internal/infra/parser"
 	"github.com/xiaozhao/xiaozhao/internal/infra/repository"
 	"github.com/xiaozhao/xiaozhao/internal/infra/storage"
 	"github.com/xiaozhao/xiaozhao/internal/observability"
@@ -63,7 +66,6 @@ func main() {
 
 func run(cfg *config.Config, lg *zap.Logger) error {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
 
 	db, err := database.Open(ctx, cfg.Postgres, lg)
 	if err != nil {
@@ -104,6 +106,9 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	usageRepo := repository.NewUsageRepo(db)
 	fileRepo := repository.NewFileRepo(db)
 	fileObjectRepo := repository.NewFileObjectRepo(db)
+	knowledgeRepo := repository.NewKnowledgeBaseRepo(db)
+	documentRepo := repository.NewDocumentRepo(db)
+	documentChunkRepo := repository.NewDocumentChunkRepo(db)
 
 	// Cross-cutting.
 	rbacChecker := rbac.NewChecker(memberRepo)
@@ -112,6 +117,10 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	modelRouter, err := model.NewRouter(cfg.Model)
 	if err != nil {
 		return fmt.Errorf("init model router: %w", err)
+	}
+	embeddingProvider, err := embedding.NewProvider(cfg.Embedding)
+	if err != nil {
+		return fmt.Errorf("init embedding provider: %w", err)
 	}
 	toolRegistry := toolapp.NewRegistry()
 	if err := toolRegistry.Register(toolapp.NewCurrentTime()); err != nil {
@@ -142,6 +151,17 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 		Provider:       cfg.Storage.Provider,
 		MaxUploadBytes: cfg.Storage.MaxUploadBytes(),
 	})
+	knowledgeSvc := knowledgeapp.NewService(
+		knowledgeRepo, documentRepo, documentChunkRepo,
+		fileRepo, fileObjectRepo, projectRepo,
+		auditRepo, usageRepo, rbacChecker,
+		objectStore, parser.NewDefaultParser(), embeddingProvider,
+		knowledgeapp.Options{ChunkSize: 1000, ChunkOverlap: 150},
+	)
+	waitKnowledgeWorker := knowledgeSvc.StartWorker(ctx, 5*time.Second, 10)
+	if err := toolRegistry.Register(toolapp.NewKnowledgeSearch(knowledgeSvc)); err != nil {
+		return fmt.Errorf("register knowledge_search: %w", err)
+	}
 	conversationSvc := agentapp.NewConversationService(conversationRepo, projectRepo, rbacChecker)
 	orchestrator := agentapp.NewDefaultOrchestrator(agentapp.OrchestratorDeps{
 		Conversations: conversationSvc,
@@ -164,20 +184,22 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	projectHandler := v1.NewProjectHandler(projectSvc)
 	responseHandler := v1.NewResponseHandler(orchestrator, eventRepo)
 	fileHandler := v1.NewFileHandler(fileSvc, cfg.Storage.MaxUploadBytes())
+	knowledgeHandler := v1.NewKnowledgeHandler(knowledgeSvc)
 	healthHandler := v1.NewHealthHandler()
 
 	handler := router.New(router.Deps{
-		Log:      lg,
-		Config:   cfg,
-		JWT:      jwtMgr,
-		Redis:    rdb,
-		RBAC:     rbacChecker,
-		Auth:     authHandler,
-		Org:      orgHandler,
-		Project:  projectHandler,
-		Response: responseHandler,
-		File:     fileHandler,
-		Health:   healthHandler,
+		Log:       lg,
+		Config:    cfg,
+		JWT:       jwtMgr,
+		Redis:     rdb,
+		RBAC:      rbacChecker,
+		Auth:      authHandler,
+		Org:       orgHandler,
+		Project:   projectHandler,
+		Response:  responseHandler,
+		File:      fileHandler,
+		Knowledge: knowledgeHandler,
+		Health:    healthHandler,
 	})
 
 	srv := &http.Server{
@@ -204,14 +226,19 @@ func run(cfg *config.Config, lg *zap.Logger) error {
 	case err := <-errCh:
 		lg.Error("server error", zap.Error(err))
 		cancel()
+		waitKnowledgeWorker()
 		return err
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout())
 	defer shutdownCancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
+		cancel()
+		waitKnowledgeWorker()
 		return fmt.Errorf("shutdown: %w", err)
 	}
+	cancel()
+	waitKnowledgeWorker()
 	lg.Info("server stopped cleanly")
 	_ = shutdownCtx
 	_ = time.Now
